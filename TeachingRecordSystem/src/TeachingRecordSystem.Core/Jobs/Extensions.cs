@@ -313,6 +313,11 @@ public static class Extensions
                 job => job.ExecuteAsync(/*dryRun: */false, CancellationToken.None),
                 Cron.Never);
 
+            recurringJobManager.AddOrUpdate<CreateDqtContactAuditEventsJob>(
+                nameof(CreateDqtContactAuditEventsJob),
+                job => job.ExecuteAsync(/*performContext: */null!, CancellationToken.None),
+                Cron.Never);
+
             return Task.CompletedTask;
         });
 

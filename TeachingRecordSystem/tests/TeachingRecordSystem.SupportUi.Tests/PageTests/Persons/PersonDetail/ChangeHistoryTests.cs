@@ -67,6 +67,13 @@ public class ChangeHistoryTests(HostFixture hostFixture) : TestBase(hostFixture)
             .WithEyts()
             .WithInductionStatus(InductionStatus.Passed));
 
+        await WithDbContextAsync(async dbContext =>
+        {
+            dbContext.Attach(person.Person);
+            person.Person.DateOfDeath = Clock.Today;
+            await dbContext.SaveChangesAsync();
+        });
+
         var @event = new PersonImportedIntoDqtEvent
         {
             EventId = Guid.NewGuid(),
