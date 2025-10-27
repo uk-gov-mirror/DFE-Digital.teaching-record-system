@@ -1934,7 +1934,7 @@
           "Azure.Storage.Blobs": "[12.25.0, )",
           "CloudNative.CloudEvents": "[2.8.0, )",
           "CloudNative.CloudEvents.SystemTextJson": "[2.8.0, )",
-          "CsvHelper": "[30.1.0, )",
+          "CsvHelper": "[33.1.0, )",
           "DistributedLock.Azure": "[1.0.0, )",
           "DistributedLock.FileSystem": "[1.0.2, )",
           "EFCore.NamingConventions": "[9.0.0, )",
@@ -2084,12 +2084,9 @@
       },
       "CsvHelper": {
         "type": "CentralTransitive",
-        "requested": "[30.1.0, )",
-        "resolved": "30.1.0",
-        "contentHash": "R7sRLng2mOBOCtpg9q3B8Wna7qw4CARq9d68t4rBh09obGjEP2OC2RzGojtnIN0LBau15VRMmh1MfYpQwk2Kbw==",
-        "dependencies": {
-          "System.Linq.Async": "4.0.0"
-        }
+        "requested": "[33.1.0, )",
+        "resolved": "33.1.0",
+        "contentHash": "kqfTOZGrn7NarNeXgjh86JcpTHUoeQDMB8t9NVa/ZtlSYiV1rxfRnQ49WaJsob4AiGrbK0XDzpyKkBwai4F8eg=="
       },
       "dbup-sqlserver": {
         "type": "CentralTransitive",
