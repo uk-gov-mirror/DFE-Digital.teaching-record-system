@@ -1,14 +1,13 @@
-using System.Diagnostics;
-using System.Transactions;
 using TeachingRecordSystem.Core.DataStore.Postgres;
+using TeachingRecordSystem.Core.Services.TrnGeneration;
 
-namespace TeachingRecordSystem.Core.Services.TrnGeneration;
+namespace TeachingRecordSystem.TestCommon;
 
-public class DbTrnGenerator(TrsDbContext dbContext) : ITrnGenerator
+public class TestTrnGenerator(IDbContextFactory<TrsDbContext> dbContextFactory) : ITrnGenerator
 {
     public async Task<string> GenerateTrnAsync()
     {
-        Debug.Assert(Transaction.Current is not null);
+        await using var dbContext = await dbContextFactory.CreateDbContextAsync();
 
         var nextTrn = await dbContext
             .Database
