@@ -33,17 +33,17 @@ public static class Extensions
             {
                 var recurringJobManager = sp.GetRequiredService<IRecurringJobManager>();
 
-                //var professionalStatusEmailJobOptions = sp.GetRequiredService<IOptions<BatchSendProfessionalStatusEmailsOptions>>().Value;
-                //recurringJobManager.AddOrUpdate<BatchSendProfessionalStatusEmailsJob>(
-                //    nameof(BatchSendProfessionalStatusEmailsJob),
-                //    job => job.ExecuteAsync(CancellationToken.None),
-                //    professionalStatusEmailJobOptions.JobSchedule);
+                var professionalStatusEmailJobOptions = sp.GetRequiredService<IOptions<BatchSendProfessionalStatusEmailsOptions>>().Value;
+                recurringJobManager.AddOrUpdate<BatchSendProfessionalStatusEmailsJob>(
+                    nameof(BatchSendProfessionalStatusEmailsJob),
+                    job => job.ExecuteAsync(CancellationToken.None),
+                    professionalStatusEmailJobOptions.JobSchedule);
 
-                //var inductionEmailJobOptions = sp.GetRequiredService<IOptions<BatchSendInductionCompletedEmailsJobOptions>>().Value;
-                //recurringJobManager.AddOrUpdate<BatchSendInductionCompletedEmailsJob>(
-                //    nameof(BatchSendInductionCompletedEmailsJob),
-                //    job => job.ExecuteAsync(CancellationToken.None),
-                //    inductionEmailJobOptions.JobSchedule);
+                var inductionEmailJobOptions = sp.GetRequiredService<IOptions<BatchSendInductionCompletedEmailsJobOptions>>().Value;
+                recurringJobManager.AddOrUpdate<BatchSendInductionCompletedEmailsJob>(
+                    nameof(BatchSendInductionCompletedEmailsJob),
+                    job => job.ExecuteAsync(CancellationToken.None),
+                    inductionEmailJobOptions.JobSchedule);
 
                 return Task.CompletedTask;
             });
@@ -116,11 +116,11 @@ public static class Extensions
                 job => job.ExecuteAsync(CancellationToken.None),
                 Cron.Never);
 
-            //var giasOptions = sp.GetRequiredService<IOptions<GiasOptions>>();
-            //recurringJobManager.AddOrUpdate<RefreshEstablishmentsJob>(
-            //    nameof(RefreshEstablishmentsJob),
-            //    job => job.ExecuteAsync(CancellationToken.None),
-            //    giasOptions.Value.RefreshEstablishmentsJobSchedule);
+            var giasOptions = sp.GetRequiredService<IOptions<GiasOptions>>();
+            recurringJobManager.AddOrUpdate<RefreshEstablishmentsJob>(
+                nameof(RefreshEstablishmentsJob),
+                job => job.ExecuteAsync(CancellationToken.None),
+                giasOptions.Value.RefreshEstablishmentsJobSchedule);
 
             recurringJobManager.AddOrUpdate<ImportTpsCsvExtractFileJob>(
                 nameof(ImportTpsCsvExtractFileJob),
