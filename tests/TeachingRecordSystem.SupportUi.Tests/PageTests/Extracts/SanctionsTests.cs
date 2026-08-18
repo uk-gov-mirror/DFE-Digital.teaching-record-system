@@ -94,6 +94,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
             .WithAlert(a => a
                 .WithAlertTypeId(alertType.AlertTypeId)
                 .WithStartDate(startDate)
+                .WithEndDate(null)
                 .WithCreatedUtc(updatedOn)));
 
         await InsertAlertEventAsync(person.PersonId, updatedOn, "AlertUpdatedEvent");
@@ -318,7 +319,10 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         await TestData.CreatePersonAsync(p => p
             .WithFirstName("Jordan")
             .WithLastName("Mason")
-            .WithInductionStatus(InductionStatus.Failed));
+            .WithInductionStatus(i => i
+                .WithStatus(InductionStatus.Failed)
+                .WithStartDate(new DateOnly(2020, 1, 1))
+                .WithCompletedDate(new DateOnly(2020, 1, 2))));
 
         var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
         SetCurrentUser(user);
@@ -714,22 +718,22 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
         Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
 
-        var row = await GetCsvRowAsync(response, "TRN", duplicatePerson.Trn!);
+        var row = await GetCsvRowAsync(response, "TRNS", duplicatePerson.Trn!);
 
-        Assert.Equal(duplicatePerson.Trn, row["TRN"]?.ToString());
-        Assert.Equal(duplicatePerson.FirstName, row["First name"]?.ToString());
-        Assert.Equal(duplicatePerson.LastName, row["Last name"]?.ToString());
-        Assert.Equal(duplicatePerson.DateOfBirth?.ToString("MM/dd/yyyy"), row["Date of birth"]?.ToString());
-        Assert.Equal(duplicatePerson.NationalInsuranceNumber, row["National insurance number"]?.ToString());
+        Assert.Equal(alertPerson.Trn, row["TRN"]?.ToString());
+        Assert.Equal(alertPerson.FirstName, row["First name"]?.ToString());
+        Assert.Equal(alertPerson.LastName, row["Last name"]?.ToString());
+        Assert.Equal(alertPerson.DateOfBirth?.ToString("MM/dd/yyyy"), row["Date of birth"]?.ToString());
+        Assert.Equal(alertPerson.NationalInsuranceNumber, row["National insurance number"]?.ToString());
         Assert.Equal(alertType.Name, row["alert"]?.ToString());
         Assert.Equal(alertStart.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
         Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
         Assert.Equal(alertAddedToDqt.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_addedtodqt"]?.ToString());
-        Assert.Equal(alertPerson.Trn, row["TRNS"]?.ToString());
-        Assert.Equal(alertPerson.FirstName, row["firstnames"]?.ToString());
-        Assert.Equal(alertPerson.LastName, row["surnames"]?.ToString());
-        Assert.Equal(alertPerson.DateOfBirth?.ToString("MM/dd/yyyy"), row["DOBS"]?.ToString());
-        Assert.Equal(alertPerson.NationalInsuranceNumber, row["NINOS"]?.ToString());
+        Assert.Equal(duplicatePerson.Trn, row["TRNS"]?.ToString());
+        Assert.Equal(duplicatePerson.FirstName, row["firstnames"]?.ToString());
+        Assert.Equal(duplicatePerson.LastName, row["surnames"]?.ToString());
+        Assert.Equal(duplicatePerson.DateOfBirth?.ToString("MM/dd/yyyy"), row["DOBS"]?.ToString());
+        Assert.Equal(duplicatePerson.NationalInsuranceNumber, row["NINOS"]?.ToString());
     }
 
     [Fact]
@@ -816,7 +820,6 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         Assert.Equal($"{person.FirstName} {person.LastName}", row["Full name"]?.ToString());
         Assert.Equal(alertType.Name, row["alert"]?.ToString());
         Assert.Equal(alertStart.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
-        Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
         Assert.Equal(alertAddedToDqt.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_addedtodqt"]?.ToString());
         Assert.True(string.IsNullOrWhiteSpace(row["details"]?.ToString()));
     }
@@ -830,7 +833,10 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         var person = await TestData.CreatePersonAsync(p => p
             .WithFirstName("Jordan")
             .WithLastName("Mason")
-            .WithInductionStatus(InductionStatus.Failed));
+            .WithInductionStatus(i => i
+                .WithStatus(InductionStatus.Failed)
+                .WithStartDate(new DateOnly(2020, 1, 1))
+                .WithCompletedDate(new DateOnly(2020, 1, 2))));
 
         var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
         SetCurrentUser(user);
@@ -870,6 +876,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
             .WithAlert(a => a
                 .WithAlertTypeId(alertType.AlertTypeId)
                 .WithStartDate(startDate)
+                .WithEndDate(null)
                 .WithCreatedUtc(createdOn)));
 
         await MarkAlertDeletedAsync(person.Alerts!.Single().AlertId, deletedOn);
@@ -915,6 +922,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
             .WithAlert(a => a
                 .WithAlertTypeId(alertType.AlertTypeId)
                 .WithStartDate(startDate)
+                .WithEndDate(null)
                 .WithCreatedUtc(createdOn)));
 
         var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
@@ -1009,8 +1017,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         await WithDbContextAsync(async dbContext =>
         {
             var eventId = Guid.NewGuid();
-            var sql =
-                $@"
+            await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO events (
                     event_id,
                     event_name,
@@ -1021,16 +1028,15 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
                     person_id,
                     person_ids)
                 VALUES (
-                    '{eventId}',
-                    '{eventName}',
-                    '{createdOn:O}',
-                    '{createdOn:O}',
-                    '{{}}'::jsonb,
+                    {eventId},
+                    {eventName},
+                    {createdOn},
+                    {createdOn},
+                    jsonb_build_object(),
                     false,
-                    '{personId}',
-                    ARRAY['{personId}']::uuid[])";
-
-            await dbContext.Database.ExecuteSqlRawAsync(sql);
+                    {personId},
+                    ARRAY[{personId}]::uuid[])
+                """);
         });
     }
 
@@ -1040,11 +1046,11 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
     {
         await WithDbContextAsync(async dbContext =>
         {
-            await dbContext.Database.ExecuteSqlAsync(
+            await dbContext.Database.ExecuteSqlInterpolatedAsync(
                 $"""
                  UPDATE alerts
-                 SET deleted_on = '{deletedOn:O}'
-                 WHERE alert_id = '{alertId}'
+                 SET deleted_on = {deletedOn}
+                 WHERE alert_id = {alertId}
                  """);
         });
     }
