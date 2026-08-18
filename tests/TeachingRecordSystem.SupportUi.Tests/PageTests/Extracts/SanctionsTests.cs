@@ -815,7 +815,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         Assert.Equal(alertType.Name, row["alert"]?.ToString());
         Assert.Equal(alertStart.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
         Assert.Equal(alertAddedToDqt.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_addedtodqt"]?.ToString());
-        Assert.NotEmpty(row["details"]?.ToString());
+        Assert.False(string.IsNullOrWhiteSpace(row["details"]?.ToString()));
     }
 
     [Fact]
