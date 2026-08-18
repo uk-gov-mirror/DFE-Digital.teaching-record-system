@@ -64,11 +64,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
         // Assert
         Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
 
-        var csvContent = await response.Content.ReadAsStringAsync();
-
-        using var reader = new StringReader(csvContent);
-        using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-
+        using var csv = await CreateCsvReaderAsync(response);
         await csv.ReadAsync();
         csv.ReadHeader();
 
@@ -80,6 +76,402 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
                 "Sanction name",
                 "Alert start date",
                 "Alert end date"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_AudityAlerts_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=AudityAlerts";
+        var updatedOn = new DateTime(2025, 8, 1, 12, 30, 0, DateTimeKind.Utc);
+        var alertTypeId = await GetNonExcludedSanctionAlertTypeIdAsync();
+        var alertType = await ReferenceDataCache.GetAlertTypeByIdAsync(alertTypeId);
+        var startDate = TimeProvider.Today.AddDays(-10);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate)
+                .WithCreatedUtc(updatedOn)));
+
+        await InsertAlertEventAsync(person.PersonId, updatedOn, "AlertUpdatedEvent");
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "Date of change",
+                "Event Type",
+                "Teacher TRN",
+                "alert",
+                "alert_start",
+                "alert_end",
+                "alert_created",
+                "alert_updated"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_DupSanctions_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DupSanctions";
+
+        await TestData.CreatePersonAsync(p => p
+            .WithAlert(a => a
+                .WithAlertTypeId(AlertType.ProhibitionBySoSMisconduct)
+                .WithStartDate(TimeProvider.Today.AddDays(-10)))
+            .WithAlert(a => a
+                .WithAlertTypeId(AlertType.ProhibitionBySoSMisconduct)
+                .WithStartDate(TimeProvider.Today.AddDays(-7))));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "Full name",
+                "Date of birth",
+                "Alert name",
+                "Alert start date",
+                "Alert end date",
+                "Alert created on"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_DqS07DuplicationRecordsWithAlerts_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS07DuplicationRecordsWithAlerts";
+        var alertType = await ReferenceDataCache.GetAlertTypeByIdAsync(AlertType.ProhibitionBySoSMisconduct);
+        var dateOfBirth = new DateOnly(1985, 4, 12);
+
+        var alertPerson = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Alex")
+            .WithLastName("Taylor")
+            .WithDateOfBirth(dateOfBirth)
+            .WithNationalInsuranceNumber("AB123456C")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(TimeProvider.Today.AddDays(-10))));
+
+        await TestData.CreatePersonAsync(p => p
+            .WithFirstName(alertPerson.FirstName)
+            .WithLastName(alertPerson.LastName)
+            .WithDateOfBirth(alertPerson.DateOfBirth!.Value)
+            .WithNationalInsuranceNumber(alertPerson.NationalInsuranceNumber!));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "First name",
+                "Last name",
+                "Date of birth",
+                "National insurance number",
+                "alert",
+                "alert_start",
+                "alert_end",
+                "alert_addedtodqt",
+                "TRNS",
+                "firstnames",
+                "surnames",
+                "DOBS",
+                "NINOS"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_DqS08IpoWithAlertDetails_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS08IpoWithAlertDetails";
+        var alertType = await ReferenceDataCache.GetAlertTypeByIdAsync(AlertType.InterimProhibitionBySoS);
+
+        await TestData.CreatePersonAsync(p => p
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(TimeProvider.Today.AddDays(-10))
+                .WithDetails("Details for IPO alert")));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "First name",
+                "Middle name",
+                "Last name",
+                "Date of birth",
+                "Full name",
+                "alert",
+                "alert_start",
+                "alert_end",
+                "alert_addedtodqt",
+                "details"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_DqS10SoSNoProhibitionsActivePast2YearDate_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS10SoSNoProhibitionsActivePast2YearDate";
+        var alertType = (await ReferenceDataCache.GetAlertTypesAsync()).Single(t => t.DqtSanctionCode == "T6");
+
+        await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithMiddleName("P")
+            .WithLastName("Mason")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(TimeProvider.Today.AddYears(-3))
+                .WithCreatedUtc(TimeProvider.UtcNow.AddYears(-3))));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "First name",
+                "Middle name",
+                "Last name",
+                "Full name",
+                "alert",
+                "alert_start",
+                "alert_end",
+                "alert_addedtodqt",
+                "details"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_DqS11FailedInductionNoAlerts_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS11FailedInductionNoAlerts";
+
+        await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithLastName("Mason")
+            .WithInductionStatus(InductionStatus.Failed));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "First name",
+                "Last name",
+                "induction_status",
+                "induction_start_date",
+                "induction_completed_date"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_DqS12DeletedAlertMonthly_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS12DeletedAlertMonthly";
+        var alertType = await GetAlertTypeBySanctionCodeAsync("T1");
+        var deletedOn = new DateTime(2025, 9, 17, 8, 30, 0, DateTimeKind.Utc);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithMiddleName("P")
+            .WithLastName("Mason")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(TimeProvider.Today.AddDays(-30))
+                .WithCreatedUtc(TimeProvider.UtcNow.AddDays(-30))));
+
+        await MarkAlertDeletedAsync(person.Alerts!.Single().AlertId, deletedOn);
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "First name",
+                "Middle name",
+                "Last name",
+                "Full name",
+                "alert",
+                "alert_start",
+                "alert_end",
+                "alert_deleted",
+                "alert_updated"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_MonthlyTmuAlertReconciliation_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=MonthlyTmuAlertReconciliation";
+        var alertType = await GetAlertTypeBySanctionCodeAsync("T2");
+
+        await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithLastName("Mason")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(new DateOnly(2019, 1, 2))
+                .WithCreatedUtc(new DateTime(2019, 1, 2, 10, 0, 0, DateTimeKind.Utc))));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "Full name",
+                "DOB",
+                "Alert type",
+                "Alert start",
+                "Alert end",
+                "Alert added to TRS"
+            ],
+            csv.HeaderRecord!);
+    }
+
+    [Fact]
+    public async Task Get_MonthlyTmuAlertReconciliationKpiProcess_ContainsExpectedHeaders()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=MonthlyTmuAlertReconciliationKpiProcess";
+        var alertType = await GetAlertTypeBySanctionCodeAsync("T2");
+
+        await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithLastName("Mason")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(new DateOnly(2020, 1, 2))
+                .WithCreatedUtc(new DateTime(2020, 1, 2, 10, 0, 0, DateTimeKind.Utc))));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var response = await HttpClient.GetAsync(path);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+
+        using var csv = await CreateCsvReaderAsync(response);
+        await csv.ReadAsync();
+        csv.ReadHeader();
+
+        Assert.Equal(
+            [
+                "TRN",
+                "Full name",
+                "DOB",
+                "Alert type",
+                "Alert start",
+                "Alert end",
+                "Alert added to TRS",
+                "Alert modified on TRS"
             ],
             csv.HeaderRecord!);
     }
@@ -114,8 +506,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
             $"new-sanctions-{TimeProvider.Today:yyyyMMdd}.csv",
             fileName);
 
-        var csvContent = await response.Content.ReadAsStringAsync();
-        var row = await GetCsvRowAsync(response, person.Trn!);
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
 
         Assert.Equal(
             $"{person.FirstName} {person.MiddleName} {person.LastName}",
@@ -162,8 +553,7 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
             $"spent-sanctions-{TimeProvider.Today:yyyyMMdd}.csv",
             fileName);
 
-        var csvContent = await response.Content.ReadAsStringAsync();
-        var row = await GetCsvRowAsync(response, person.Trn!);
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
 
         Assert.Equal(
             $"{person.FirstName} {person.MiddleName} {person.LastName}",
@@ -178,19 +568,514 @@ public class SanctionsTests(HostFixture hostFixture) : TestBase(hostFixture)
             row["Alert end date"]?.ToString());
     }
 
-    private static async Task<IDictionary<string, object>> GetCsvRowAsync(
-        HttpResponseMessage response,
-        string trn)
+    [Fact]
+    public async Task Get_ExtractsWithAudityAlerts_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=AudityAlerts";
+        var startDate = TimeProvider.Today.AddDays(-10);
+        var updatedOn = new DateTime(2025, 8, 1, 12, 30, 0, DateTimeKind.Utc);
+        var alertTypeId = await GetNonExcludedSanctionAlertTypeIdAsync();
+        var alertType = await ReferenceDataCache.GetAlertTypeByIdAsync(alertTypeId);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate)
+                .WithCreatedUtc(updatedOn)));
+
+        await InsertAlertEventAsync(person.PersonId, updatedOn, "AlertUpdatedEvent");
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "Teacher TRN", person.Trn!);
+
+        Assert.Equal(updatedOn.ToString("MM/dd/yyyy HH:mm:ss"), row["Date of change"]?.ToString());
+        Assert.Equal("AlertUpdatedEvent", row["Event Type"]?.ToString());
+        Assert.Equal(person.Trn, row["Teacher TRN"]?.ToString());
+        Assert.Equal(alertType.Name, row["alert"]?.ToString());
+        Assert.Equal(startDate.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
+        Assert.Equal(updatedOn.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_created"]?.ToString());
+        Assert.Equal(updatedOn.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_updated"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithDupSanctions_ReturnsExpectedRows()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DupSanctions";
+        var startDate1 = TimeProvider.Today.AddDays(-10);
+        var startDate2 = TimeProvider.Today.AddDays(-7);
+        var createdOn1 = new DateTime(2025, 8, 1, 9, 15, 0, DateTimeKind.Utc);
+        var createdOn2 = new DateTime(2025, 8, 1, 10, 45, 0, DateTimeKind.Utc);
+        var alertType = await TestData.ReferenceDataCache.GetAlertTypeByIdAsync(AlertType.ProhibitionBySoSMisconduct);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate1)
+                .WithCreatedUtc(createdOn1))
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate2)
+                .WithCreatedUtc(createdOn2)));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var rows = await GetCsvRowsAsync(response);
+
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, row => Assert.Equal(person.Trn, row["TRN"]?.ToString()));
+
+        Assert.Equal(
+            $"{person.FirstName} {person.MiddleName} {person.LastName}",
+            rows[0]["Full name"]?.ToString());
+
+        Assert.Equal(
+            person.DateOfBirth?.ToString("MM/dd/yyyy"),
+            rows[0]["Date of birth"]?.ToString());
+
+        Assert.Equal(
+            alertType.Name,
+            rows[0]["Alert name"]?.ToString());
+
+        Assert.Equal(
+            startDate1.ToString("MM/dd/yyyy"),
+            rows[0]["Alert start date"]?.ToString());
+
+        Assert.True(string.IsNullOrWhiteSpace(rows[0]["Alert end date"]?.ToString()));
+
+        Assert.Equal(
+            createdOn1.ToString("MM/dd/yyyy HH:mm:ss"),
+            rows[0]["Alert created on"]?.ToString());
+
+        Assert.Equal(
+            startDate2.ToString("MM/dd/yyyy"),
+            rows[1]["Alert start date"]?.ToString());
+
+        Assert.Equal(
+            createdOn2.ToString("MM/dd/yyyy HH:mm:ss"),
+            rows[1]["Alert created on"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithDqS07DuplicationRecordsWithAlerts_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS07DuplicationRecordsWithAlerts";
+        var alertType = await ReferenceDataCache.GetAlertTypeByIdAsync(AlertType.ProhibitionBySoSMisconduct);
+        var dateOfBirth = new DateOnly(1985, 4, 12);
+        var alertStart = TimeProvider.Today.AddDays(-10);
+        var alertAddedToDqt = new DateTime(2025, 8, 1, 12, 30, 0, DateTimeKind.Utc);
+
+        var alertPerson = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Alex")
+            .WithLastName("Taylor")
+            .WithDateOfBirth(dateOfBirth)
+            .WithNationalInsuranceNumber("AB123456C")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(alertStart)
+                .WithCreatedUtc(alertAddedToDqt)));
+
+        var duplicatePerson = await TestData.CreatePersonAsync(p => p
+            .WithFirstName(alertPerson.FirstName)
+            .WithLastName(alertPerson.LastName)
+            .WithDateOfBirth(alertPerson.DateOfBirth!.Value)
+            .WithNationalInsuranceNumber(alertPerson.NationalInsuranceNumber!));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", duplicatePerson.Trn!);
+
+        Assert.Equal(duplicatePerson.Trn, row["TRN"]?.ToString());
+        Assert.Equal(duplicatePerson.FirstName, row["First name"]?.ToString());
+        Assert.Equal(duplicatePerson.LastName, row["Last name"]?.ToString());
+        Assert.Equal(duplicatePerson.DateOfBirth?.ToString("MM/dd/yyyy"), row["Date of birth"]?.ToString());
+        Assert.Equal(duplicatePerson.NationalInsuranceNumber, row["National insurance number"]?.ToString());
+        Assert.Equal(alertType.Name, row["alert"]?.ToString());
+        Assert.Equal(alertStart.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
+        Assert.Equal(alertAddedToDqt.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_addedtodqt"]?.ToString());
+        Assert.Equal(alertPerson.Trn, row["TRNS"]?.ToString());
+        Assert.Equal(alertPerson.FirstName, row["firstnames"]?.ToString());
+        Assert.Equal(alertPerson.LastName, row["surnames"]?.ToString());
+        Assert.Equal(alertPerson.DateOfBirth?.ToString("MM/dd/yyyy"), row["DOBS"]?.ToString());
+        Assert.Equal(alertPerson.NationalInsuranceNumber, row["NINOS"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithDqS08IpoWithAlertDetails_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS08IpoWithAlertDetails";
+        var alertType = await ReferenceDataCache.GetAlertTypeByIdAsync(AlertType.InterimProhibitionBySoS);
+        var alertStart = TimeProvider.Today.AddDays(-10);
+        var alertAddedToDqt = new DateTime(2025, 8, 1, 12, 30, 0, DateTimeKind.Utc);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithMiddleName("P")
+            .WithLastName("Mason")
+            .WithDateOfBirth(new DateOnly(1981, 3, 2))
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(alertStart)
+                .WithCreatedUtc(alertAddedToDqt)
+                .WithDetails("Details for IPO alert")));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
+
+        Assert.Equal(person.Trn, row["TRN"]?.ToString());
+        Assert.Equal(person.FirstName, row["First name"]?.ToString());
+        Assert.Equal(person.MiddleName, row["Middle name"]?.ToString());
+        Assert.Equal(person.LastName, row["Last name"]?.ToString());
+        Assert.Equal(person.DateOfBirth?.ToString("MM/dd/yyyy"), row["Date of birth"]?.ToString());
+        Assert.Equal($"{person.FirstName} {person.LastName}", row["Full name"]?.ToString());
+        Assert.Equal(alertType.Name, row["alert"]?.ToString());
+        Assert.Equal(alertStart.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
+        Assert.Equal(alertAddedToDqt.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_addedtodqt"]?.ToString());
+        Assert.Equal("Details for IPO alert", row["details"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithDqS10SoSNoProhibitionsActivePast2YearDate_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS10SoSNoProhibitionsActivePast2YearDate";
+        var alertType = (await ReferenceDataCache.GetAlertTypesAsync()).Single(t => t.DqtSanctionCode == "T6");
+        var alertStart = TimeProvider.Today.AddYears(-3);
+        var alertAddedToDqt = TimeProvider.UtcNow.AddYears(-3);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithMiddleName("P")
+            .WithLastName("Mason")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(alertStart)
+                .WithCreatedUtc(alertAddedToDqt)));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
+
+        Assert.Equal(person.Trn, row["TRN"]?.ToString());
+        Assert.Equal(person.FirstName, row["First name"]?.ToString());
+        Assert.Equal(person.MiddleName, row["Middle name"]?.ToString());
+        Assert.Equal(person.LastName, row["Last name"]?.ToString());
+        Assert.Equal($"{person.FirstName} {person.LastName}", row["Full name"]?.ToString());
+        Assert.Equal(alertType.Name, row["alert"]?.ToString());
+        Assert.Equal(alertStart.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
+        Assert.Equal(alertAddedToDqt.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_addedtodqt"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["details"]?.ToString()));
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithDqS11FailedInductionNoAlerts_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS11FailedInductionNoAlerts";
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithLastName("Mason")
+            .WithInductionStatus(InductionStatus.Failed));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
+
+        Assert.Equal(person.Trn, row["TRN"]?.ToString());
+        Assert.Equal(person.FirstName, row["First name"]?.ToString());
+        Assert.Equal(person.LastName, row["Last name"]?.ToString());
+        Assert.Equal(person.InductionStatus.ToString(), row["induction_status"]?.ToString());
+        Assert.Equal(person.InductionStartDate?.ToString("MM/dd/yyyy"), row["induction_start_date"]?.ToString());
+        Assert.Equal(person.InductionCompletedDate?.ToString("MM/dd/yyyy"), row["induction_completed_date"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithDqS12DeletedAlertMonthly_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=DqS12DeletedAlertMonthly";
+        var alertType = await GetAlertTypeBySanctionCodeAsync("T1");
+        var startDate = TimeProvider.Today.AddDays(-30);
+        var deletedOn = new DateTime(2025, 9, 17, 8, 30, 0, DateTimeKind.Utc);
+        var createdOn = TimeProvider.UtcNow.AddDays(-30);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithMiddleName("P")
+            .WithLastName("Mason")
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate)
+                .WithCreatedUtc(createdOn)));
+
+        await MarkAlertDeletedAsync(person.Alerts!.Single().AlertId, deletedOn);
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
+
+        Assert.Equal(person.Trn, row["TRN"]?.ToString());
+        Assert.Equal(person.FirstName, row["First name"]?.ToString());
+        Assert.Equal(person.MiddleName, row["Middle name"]?.ToString());
+        Assert.Equal(person.LastName, row["Last name"]?.ToString());
+        Assert.Equal($"{person.FirstName} {person.LastName}", row["Full name"]?.ToString());
+        Assert.Equal(alertType.Name, row["alert"]?.ToString());
+        Assert.Equal(startDate.ToString("MM/dd/yyyy"), row["alert_start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["alert_end"]?.ToString()));
+        Assert.Equal(deletedOn.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_deleted"]?.ToString());
+        Assert.Equal(createdOn.ToString("MM/dd/yyyy HH:mm:ss"), row["alert_updated"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithMonthlyTmuAlertReconciliation_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=MonthlyTmuAlertReconciliation";
+        var alertType = await GetAlertTypeBySanctionCodeAsync("T2");
+        var startDate = new DateOnly(2019, 1, 2);
+        var createdOn = new DateTime(2019, 1, 2, 10, 0, 0, DateTimeKind.Utc);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithLastName("Mason")
+            .WithDateOfBirth(new DateOnly(1981, 3, 2))
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate)
+                .WithCreatedUtc(createdOn)));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
+
+        Assert.Equal(person.Trn, row["TRN"]?.ToString());
+        Assert.Equal($"{person.FirstName} {person.LastName}", row["Full name"]?.ToString());
+        Assert.Equal(person.DateOfBirth?.ToString("MM/dd/yyyy"), row["DOB"]?.ToString());
+        Assert.Equal(alertType.Name, row["Alert type"]?.ToString());
+        Assert.Equal(startDate.ToString("MM/dd/yyyy"), row["Alert start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["Alert end"]?.ToString()));
+        Assert.Equal(createdOn.ToString("MM/dd/yyyy HH:mm:ss"), row["Alert added to TRS"]?.ToString());
+    }
+
+    [Fact]
+    public async Task Get_ExtractsWithMonthlyTmuAlertReconciliationKpiProcess_ReturnsExpectedRow()
+    {
+        // Arrange
+        var path = $"{RequestPath}?handler=MonthlyTmuAlertReconciliationKpiProcess";
+        var alertType = await GetAlertTypeBySanctionCodeAsync("T2");
+        var startDate = new DateOnly(2020, 1, 2);
+        var createdOn = new DateTime(2020, 1, 2, 10, 0, 0, DateTimeKind.Utc);
+
+        var person = await TestData.CreatePersonAsync(p => p
+            .WithFirstName("Jordan")
+            .WithLastName("Mason")
+            .WithDateOfBirth(new DateOnly(1981, 3, 2))
+            .WithAlert(a => a
+                .WithAlertTypeId(alertType.AlertTypeId)
+                .WithStartDate(startDate)
+                .WithCreatedUtc(createdOn)));
+
+        var user = await TestData.CreateUserAsync(role: UserRoles.Administrator);
+        SetCurrentUser(user);
+
+        // Act
+        var request = new HttpRequestMessage(HttpMethod.Get, path);
+        var response = await HttpClient.SendAsync(request);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+
+        var row = await GetCsvRowAsync(response, "TRN", person.Trn!);
+
+        Assert.Equal(person.Trn, row["TRN"]?.ToString());
+        Assert.Equal($"{person.FirstName} {person.LastName}", row["Full name"]?.ToString());
+        Assert.Equal(person.DateOfBirth?.ToString("MM/dd/yyyy"), row["DOB"]?.ToString());
+        Assert.Equal(alertType.Name, row["Alert type"]?.ToString());
+        Assert.Equal(startDate.ToString("MM/dd/yyyy"), row["Alert start"]?.ToString());
+        Assert.True(string.IsNullOrWhiteSpace(row["Alert end"]?.ToString()));
+        Assert.Equal(createdOn.ToString("MM/dd/yyyy HH:mm:ss"), row["Alert added to TRS"]?.ToString());
+        Assert.Equal(createdOn.ToString("MM/dd/yyyy HH:mm:ss"), row["Alert modified on TRS"]?.ToString());
+    }
+
+    private async Task<Guid> GetNonExcludedSanctionAlertTypeIdAsync()
+    {
+        var excludedNames = new[]
+        {
+            "Prohibition by the Secretary of State - misconduct",
+            "Secretary of State decision - no prohibition",
+            "Interim prohibition by the Secretary of State"
+        };
+
+        return (await ReferenceDataCache.GetAlertTypesAsync())
+            .First(t =>
+                t.DqtSanctionCode is not null &&
+                t.DqtSanctionCode != "E3" &&
+                !excludedNames.Contains(t.Name))
+            .AlertTypeId;
+    }
+
+    private async Task<AlertType> GetAlertTypeBySanctionCodeAsync(string sanctionCode) =>
+        (await ReferenceDataCache.GetAlertTypesAsync())
+            .Single(t => t.DqtSanctionCode == sanctionCode);
+
+    private async Task InsertAlertEventAsync(
+        Guid personId,
+        DateTime createdOn,
+        string eventName)
+    {
+        await WithDbContextAsync(async dbContext =>
+        {
+            var eventId = Guid.NewGuid();
+            var sql =
+                $@"
+                INSERT INTO events (
+                    event_id,
+                    event_name,
+                    created,
+                    inserted,
+                    payload,
+                    published,
+                    person_id,
+                    person_ids)
+                VALUES (
+                    '{eventId}',
+                    '{eventName}',
+                    '{createdOn:O}',
+                    '{createdOn:O}',
+                    '{{}}'::jsonb,
+                    false,
+                    '{personId}',
+                    ARRAY['{personId}']::uuid[])";
+
+            await dbContext.Database.ExecuteSqlRawAsync(sql);
+        });
+    }
+
+    private async Task MarkAlertDeletedAsync(
+        Guid alertId,
+        DateTime deletedOn)
+    {
+        await WithDbContextAsync(async dbContext =>
+        {
+            await dbContext.Database.ExecuteSqlAsync(
+                $"""
+                 UPDATE alerts
+                 SET deleted_on = '{deletedOn:O}'
+                 WHERE alert_id = '{alertId}'
+                 """);
+        });
+    }
+
+    private static async Task<IReadOnlyList<IDictionary<string, object>>> GetCsvRowsAsync(
+        HttpResponseMessage response)
     {
         var csvContent = await response.Content.ReadAsStringAsync();
 
         using var reader = new StringReader(csvContent);
         using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
 
-        var rows = csv.GetRecords<dynamic>().ToList();
-
-        return rows
+        return csv.GetRecords<dynamic>()
             .Cast<IDictionary<string, object>>()
-            .Single(r => r["TRN"]?.ToString() == trn);
+            .ToList();
+    }
+
+    private static async Task<IDictionary<string, object>> GetCsvRowAsync(
+        HttpResponseMessage response,
+        string headerName,
+        string value)
+    {
+        var rows = await GetCsvRowsAsync(response);
+
+        return rows.Single(r => r[headerName]?.ToString() == value);
+    }
+
+    private static async Task<CsvReader> CreateCsvReaderAsync(HttpResponseMessage response)
+    {
+        var csvContent = await response.Content.ReadAsStringAsync();
+        var reader = new StringReader(csvContent);
+        return new CsvReader(reader, CultureInfo.InvariantCulture);
     }
 }
